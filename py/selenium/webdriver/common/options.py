@@ -15,6 +15,7 @@
 # specific language governing permissions and limitations
 # under the License.
 import typing
+import warnings
 from abc import ABCMeta
 from abc import abstractmethod
 from enum import Enum
@@ -44,12 +45,23 @@ class _BaseOptionsDescriptor:
         self.name = name
 
     def __get__(self, obj, cls):
+        if self.name == "enableBidi":
+            # whether BiDi is or will be enabled
+            value = obj._caps.get("webSocketUrl")
+            return value is True or isinstance(value, str)
+        if self.name == "webSocketUrl":
+            # Return socket url or None if not created yet
+            value = obj._caps.get(self.name)
+            return None if not isinstance(value, str) else value
         if self.name in ("acceptInsecureCerts", "strictFileInteractability", "setWindowRect", "se:downloadsEnabled"):
             return obj._caps.get(self.name, False)
         return obj._caps.get(self.name)
 
     def __set__(self, obj, value):
-        obj.set_capability(self.name, value)
+        if self.name == "enableBidi":
+            obj.set_capability("webSocketUrl", value)
+        else:
+            obj.set_capability(self.name, value)
 
 
 class _PageLoadStrategyDescriptor:
@@ -249,6 +261,50 @@ class BaseOptions(metaclass=ABCMeta):
         - `None`
     """
 
+    enable_bidi = _BaseOptionsDescriptor("enableBidi")
+    """Gets and Set whether the session has WebDriverBiDi enabled.
+
+    Usage
+    -----
+    - Get
+        - `self.enable_bidi`
+    - Set
+        - `self.enable_bidi` = `value`
+
+    Parameters
+    ----------
+    `value`: `bool`
+
+    Returns
+    -------
+    - Get
+        - `bool`
+    - Set
+        - `None`
+    """
+
+    web_socket_url = _BaseOptionsDescriptor("webSocketUrl")
+    """Gets and Set whether the session accepts insecure certificates.
+
+    Usage
+    -----
+    - Get
+        - `self.web_socket_url`
+    - Set
+        - `self.web_socket_url` = `value`
+
+    Parameters
+    ----------
+    `value`: `str`
+
+    Returns
+    -------
+    - Get
+        - `str` or `None`
+    - Set
+        - `None`
+    """
+
     page_load_strategy = _PageLoadStrategyDescriptor("pageLoadStrategy")
     """:Gets and Sets page load strategy, the default is "normal".
 
@@ -361,6 +417,28 @@ class BaseOptions(metaclass=ABCMeta):
         - `None`
     """
 
+    web_socket_url = _BaseOptionsDescriptor("webSocketUrl")
+    """Gets and Sets WebSocket URL.
+
+    Usage
+    -----
+    - Get
+        - `self.web_socket_url`
+    - Set
+        - `self.web_socket_url` = `value`
+
+    Parameters
+    ----------
+    `value`: `bool`
+
+    Returns
+    -------
+    - Get
+        - `bool`
+    - Set
+        - `None`
+    """
+
     def __init__(self) -> None:
         super().__init__()
         self._caps = self.default_capabilities
@@ -437,6 +515,15 @@ class ArgOptions(BaseOptions):
     def ignore_local_proxy_environment_variables(self) -> None:
         """By calling this you will ignore HTTP_PROXY and HTTPS_PROXY from
         being picked up and used."""
+        warnings.warn(
+            "using ignore_local_proxy_environment_variables in Options has been deprecated, "
+            "instead, create a Proxy instance with ProxyType.DIRECT to ignore proxy settings, "
+            "pass the proxy instance into a ClientConfig constructor, "
+            "pass the client config instance into the Webdriver constructor",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+
         super().ignore_local_proxy_environment_variables()
 
     def to_capabilities(self):

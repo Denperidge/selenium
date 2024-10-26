@@ -2,14 +2,6 @@ workspace(name = "selenium")
 
 load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
 
-# This gets us a pre-compiled `protoc`
-
-load("@rules_proto//proto:repositories.bzl", "rules_proto_dependencies", "rules_proto_toolchains")
-
-rules_proto_dependencies()
-
-rules_proto_toolchains()
-
 # rules_closure are not published to BCR.
 
 http_archive(
@@ -42,8 +34,8 @@ rules_closure_toolchains()
 
 http_archive(
     name = "rules_rust",
-    integrity = "sha256-JLN47ZcAbx9wEr5Jiib4HduZATGLiDgK7oUi/fvotzU=",
-    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.42.1/rules_rust-v0.42.1.tar.gz"],
+    integrity = "sha256-Zx3bP+Xrz53TTQUeynNS+68z+lO/Ye7Qt1pMNIKeVIA=",
+    urls = ["https://github.com/bazelbuild/rules_rust/releases/download/0.52.2/rules_rust-v0.52.2.tar.gz"],
 )
 
 load("@rules_rust//rust:repositories.bzl", "rules_rust_dependencies", "rust_register_toolchains")

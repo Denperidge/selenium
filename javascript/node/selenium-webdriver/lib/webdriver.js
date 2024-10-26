@@ -43,6 +43,8 @@ const { isObject } = require('./util')
 const BIDI = require('../bidi')
 const { PinnedScript } = require('./pinnedScript')
 const JSZip = require('jszip')
+const Script = require('./script')
+const Network = require('./network')
 
 // Capability names that are defined in the W3C spec.
 const W3C_CAPABILITY_NAMES = new Set([
@@ -654,6 +656,8 @@ function filterNonW3CCaps(capabilities) {
  * @implements {IWebDriver}
  */
 class WebDriver {
+  #script = undefined
+  #network = undefined
   /**
    * @param {!(./session.Session|IThenable<!./session.Session>)} session Either
    *     a known session or a promise that will be resolved to a session.
@@ -779,6 +783,19 @@ class WebDriver {
 
       if (this.onQuit_) {
         return this.onQuit_.call(void 0)
+      }
+
+      // Close the websocket connection on quit
+      // If the websocket connection is not closed,
+      // and we are running CDP sessions against the Selenium Grid,
+      // the node process never exits since the websocket connection is open until the Grid is shutdown.
+      if (this._cdpWsConnection !== undefined) {
+        this._cdpWsConnection.close()
+      }
+
+      // Close the BiDi websocket connection
+      if (this._bidiConnection !== undefined) {
+        this._bidiConnection.close()
       }
     })
   }
@@ -1104,6 +1121,26 @@ class WebDriver {
     return new TargetLocator(this)
   }
 
+  script() {
+    // The Script calls the LogInspector which maintains state of the callbacks.
+    // Returning a new instance of the same driver will not work while removing callbacks.
+    if (this.#script === undefined) {
+      this.#script = new Script(this)
+    }
+
+    return this.#script
+  }
+
+  network() {
+    // The Network maintains state of the callbacks.
+    // Returning a new instance of the same driver will not work while removing callbacks.
+    if (this.#network === undefined) {
+      this.#network = new Network(this)
+    }
+
+    return this.#network
+  }
+
   validatePrintPageParams(keys, object) {
     let page = {}
     let margin = {}
@@ -1209,18 +1246,18 @@ class WebDriver {
     this._wsUrl = await this.getWsUrl(debuggerUrl, target, caps)
     return new Promise((resolve, reject) => {
       try {
-        this._wsConnection = new WebSocket(this._wsUrl.replace('localhost', '127.0.0.1'))
-        this._cdpConnection = new cdp.CdpConnection(this._wsConnection)
+        this._cdpWsConnection = new WebSocket(this._wsUrl.replace('localhost', '127.0.0.1'))
+        this._cdpConnection = new cdp.CdpConnection(this._cdpWsConnection)
       } catch (err) {
         reject(err)
         return
       }
 
-      this._wsConnection.on('open', async () => {
+      this._cdpWsConnection.on('open', async () => {
         await this.getCdpTargets()
       })
 
-      this._wsConnection.on('message', async (message) => {
+      this._cdpWsConnection.on('message', async (message) => {
         const params = JSON.parse(message)
         if (params.result) {
           if (params.result.targetInfos) {
@@ -1241,7 +1278,7 @@ class WebDriver {
         }
       })
 
-      this._wsConnection.on('error', (error) => {
+      this._cdpWsConnection.on('error', (error) => {
         reject(error)
       })
     })
@@ -1256,9 +1293,12 @@ class WebDriver {
    * @returns {BIDI}
    */
   async getBidi() {
-    const caps = await this.getCapabilities()
-    let WebSocketUrl = caps['map_'].get('webSocketUrl')
-    return new BIDI(WebSocketUrl.replace('localhost', '127.0.0.1'))
+    if (this._bidiConnection === undefined) {
+      const caps = await this.getCapabilities()
+      let WebSocketUrl = caps['map_'].get('webSocketUrl')
+      this._bidiConnection = new BIDI(WebSocketUrl.replace('localhost', '127.0.0.1'))
+    }
+    return this._bidiConnection
   }
 
   /**
@@ -1306,7 +1346,7 @@ class WebDriver {
    * @param connection CDP Connection
    */
   async register(username, password, connection) {
-    this._wsConnection.on('message', (message) => {
+    this._cdpWsConnection.on('message', (message) => {
       const params = JSON.parse(message)
 
       if (params.method === 'Fetch.authRequired') {
@@ -1351,7 +1391,7 @@ class WebDriver {
    * @param callback callback called when we intercept requests.
    */
   async onIntercept(connection, httpResponse, callback) {
-    this._wsConnection.on('message', (message) => {
+    this._cdpWsConnection.on('message', (message) => {
       const params = JSON.parse(message)
       if (params.method === 'Fetch.requestPaused') {
         const requestPausedParams = params['params']
@@ -1388,7 +1428,7 @@ class WebDriver {
    * @returns {Promise<void>}
    */
   async onLogEvent(connection, callback) {
-    this._wsConnection.on('message', (message) => {
+    this._cdpWsConnection.on('message', (message) => {
       const params = JSON.parse(message)
       if (params.method === 'Runtime.consoleAPICalled') {
         const consoleEventParams = params['params']
@@ -1425,7 +1465,7 @@ class WebDriver {
   async onLogException(connection, callback) {
     await connection.execute('Runtime.enable', {}, null)
 
-    this._wsConnection.on('message', (message) => {
+    this._cdpWsConnection.on('message', (message) => {
       const params = JSON.parse(message)
 
       if (params.method === 'Runtime.exceptionThrown') {
@@ -1478,7 +1518,7 @@ class WebDriver {
       null,
     )
 
-    this._wsConnection.on('message', async (message) => {
+    this._cdpWsConnection.on('message', async (message) => {
       const params = JSON.parse(message)
       if (params.method === 'Runtime.bindingCalled') {
         let payload = JSON.parse(params['params']['payload'])
