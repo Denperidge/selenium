@@ -33,6 +33,11 @@ If you have `pip <https://pip.pypa.io/>`_ on your system, you can simply install
 
     pip install -U selenium
 
+If you have `pipx <https://pipx.pypa.io/>`_ on your system, you can install it in an isolated virtual environment using::
+
+    pipx install --include-deps selenium
+    pipx upgrade selenium
+
 Alternately, you can download the source distribution from `PyPI <https://pypi.org/project/selenium/#files>`, unarchive it, and run::
 
     python setup.py install
